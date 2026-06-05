@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 """Extrai stems de uma música usando dois modelos independentes:
 
-  * Demucs (htdemucs_ft)  — separação híbrida tempo/frequência, acelerada por MPS no M-series.
-                            Melhor qualidade de baixo disponível (SDR ~12.0).
-  * MDX-Net kuielab bass  — via ``audio-separator``; isolador de baixo dedicado (SDR ~10.4).
-
-Nota: o catálogo do audio-separator não tem nenhum BS-RoFormer que isole o baixo
-sozinho (os checkpoints distribuídos são de vocais/instrumental). O kuielab é o
-melhor isolador de baixo pronto fora o Demucs — daí a comparação entre os dois.
+  * Demucs (htdemucs_ft)  — separação híbrida tempo/frequência, acelerada por MPS (bass SDR ~12.0).
+  * BS-RoFormer-SW        — via ``audio-separator``; RoFormer 6-stem SOTA
+                            (bass/drums/vocals/guitar/piano/other), by jarredou.
 
 Modos:
   bass  (padrão)  -> extrai SÓ o baixo de cada modelo (fase de teste / comparação A/B).
-  full            -> separação completa do Demucs (4 stems); o kuielab só faz baixo.
+  full            -> separação completa de cada modelo (Demucs 4-stem; BS-RoFormer-SW 6-stem).
 
 Sempre gera também ``no_bass.wav`` (a música sem o contrabaixo) para cada modelo.
 As saídas dos dois modelos ficam em pastas separadas, para comparação lado a lado:
 
-  output/<musica>/demucs/    bass.wav, no_bass.wav  (+ drums/vocals/other no modo full)
-  output/<musica>/mdx_bass/  bass.wav, no_bass.wav
+  output/<musica>/demucs/       bass.wav, no_bass.wav  (+ drums/vocals/other no modo full)
+  output/<musica>/bs_roformer/  bass.wav, no_bass.wav  (+ drums/vocals/guitar/piano/other no modo full)
 
 Uso:
   uv run stem_extractor.py "examples/minha musica.mp3"            # modo bass (teste)
@@ -44,10 +40,11 @@ import soundfile as sf
 # ---------------------------------------------------------------------------
 DEMUCS_MODEL = "htdemucs_ft"
 
-# Segundo modelo: isolador de baixo dedicado (MDX-Net kuielab) do audio-separator.
-# Produz dois stems: "bass" e "no bass". Veja alternativas com --list-models.
-SECOND_MODEL = "kuielab_a_bass.onnx"
-SECOND_DIR = "mdx_bass"
+# Segundo modelo: BS-RoFormer-SW (RoFormer 6-stem SOTA) via audio-separator.
+# Produz 6 stems incl. "bass"; o "no bass" é a soma dos demais.
+# Veja alternativas com --list-models.
+SECOND_MODEL = "BS-Roformer-SW.ckpt"
+SECOND_DIR = "bs_roformer"
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 OUTPUT_ROOT = PROJECT_ROOT / "output"
@@ -184,7 +181,7 @@ def run_second_model(input_path: Path, out_dir: Path, mode: str) -> None:
 # ---------------------------------------------------------------------------
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Separa stems com Demucs e MDX-Net kuielab bass (saídas lado a lado).")
+        description="Separa stems com Demucs e BS-RoFormer-SW (saídas lado a lado).")
     ap.add_argument("input", nargs="?", type=Path,
                     help="arquivo de áudio (wav/mp3/flac/...)")
     ap.add_argument("--mode", choices=["bass", "full"], default="bass",
@@ -193,7 +190,7 @@ def main() -> None:
                     help="device do Demucs: mps (padrão) | cpu | cuda")
     ap.add_argument("--duration", type=float, default=None,
                     help="processa só os primeiros N segundos (teste rápido)")
-    ap.add_argument("--only", choices=["demucs", "mdx"], default=None,
+    ap.add_argument("--only", choices=["demucs", "roformer"], default=None,
                     help="rodar apenas um dos modelos")
     ap.add_argument("--out", type=Path, default=None,
                     help=f"pasta de saída base (padrão: {OUTPUT_ROOT})")
@@ -220,7 +217,7 @@ def main() -> None:
         if args.only in (None, "demucs"):
             print("\n[demucs]")
             run_demucs(audio, out_base / "demucs", args.device, args.mode)
-        if args.only in (None, "mdx"):
+        if args.only in (None, "roformer"):
             print(f"\n[{SECOND_DIR}]")
             run_second_model(audio, out_base / SECOND_DIR, args.mode)
 

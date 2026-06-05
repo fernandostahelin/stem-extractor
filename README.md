@@ -3,17 +3,17 @@
 Separa **stems** de uma música usando **dois modelos independentes** e salva as
 saídas lado a lado para comparação:
 
-| Modelo | Como roda | Baixo (SDR) |
+| Modelo | Como roda | Stems |
 |---|---|---|
-| **Demucs** (`htdemucs_ft`) | PyTorch, acelerado por **MPS** no Apple Silicon | **~12.0** (4 stems prontos) |
-| **MDX-Net kuielab bass** | via [`audio-separator`](https://github.com/nomadkaraoke/python-audio-separator) | ~10.4 (isolador de baixo dedicado) |
+| **Demucs** (`htdemucs_ft`) | PyTorch, acelerado por **MPS** no Apple Silicon | 4 stems (bass SDR ~12.0) |
+| **BS-RoFormer-SW** | via [`audio-separator`](https://github.com/nomadkaraoke/python-audio-separator) | 6 stems SOTA: bass/drums/vocals/guitar/piano/other |
 
 Sempre gera também `no_bass.wav` — a música **sem o contrabaixo**.
 
-> **Por que não BS-RoFormer?** O catálogo do `audio-separator` não tem nenhum
-> checkpoint BS-RoFormer que isole o baixo sozinho — os modelos RoFormer
-> distribuídos são de vocais/instrumental. O kuielab (MDX-Net) é o melhor
-> isolador de baixo pronto fora o Demucs. Troque em `SECOND_MODEL` se quiser.
+> **Limite conhecido (baixo × bumbo):** quando o contrabaixo e o kick ocupam
+> as mesmas frequências graves, nenhum modelo separa 100%. Medido aqui, tanto
+> o Demucs quanto o BS-RoFormer-SW atribuem ~45% da energia de 60–250 Hz ao
+> baixo e ~43% à bateria — então o `no_bass` ainda pode ter grave audível.
 
 ## Requisitos
 
@@ -53,8 +53,8 @@ uv run stem_extractor.py --list-models
 
 ```
 output/<musica>/
-  demucs/    bass.wav, no_bass.wav   (+ drums/vocals/other no modo full)
-  mdx_bass/  bass.wav, no_bass.wav
+  demucs/       bass.wav, no_bass.wav   (+ drums/vocals/other no modo full)
+  bs_roformer/  bass.wav, no_bass.wav   (+ drums/vocals/guitar/piano/other no modo full)
 ```
 
 ## Notas
