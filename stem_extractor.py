@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-"""Extrai stems de uma música usando dois modelos independentes:
+"""Extrai stems de uma música. Motor padrão: BS-RoFormer-SW (RoFormer 6-stem SOTA).
 
-  * Demucs (htdemucs_ft)  — separação híbrida tempo/frequência, acelerada por MPS (bass SDR ~12.0).
-  * BS-RoFormer-SW        — via ``audio-separator``; RoFormer 6-stem SOTA
-                            (bass/drums/vocals/guitar/piano/other), by jarredou.
+  * BS-RoFormer-SW (padrão) — via ``audio-separator``; 6 stems
+                              (bass/drums/vocals/guitar/piano/other), by jarredou.
+  * Demucs (htdemucs_ft)    — opcional (--engine demucs|both); híbrido, acelerado por MPS.
 
 Modos:
-  bass  (padrão)  -> extrai SÓ o baixo de cada modelo (fase de teste / comparação A/B).
-  full            -> separação completa de cada modelo (Demucs 4-stem; BS-RoFormer-SW 6-stem).
+  bass  (padrão)  -> extrai SÓ o baixo (fase de teste / comparação A/B).
+  full            -> separação completa (BS-RoFormer-SW 6-stem; Demucs 4-stem).
 
-Sempre gera também ``no_bass.wav`` (a música sem o contrabaixo) para cada modelo.
-As saídas dos dois modelos ficam em pastas separadas, para comparação lado a lado:
+Sempre gera também ``no_bass.wav`` (a música sem o contrabaixo) para cada motor.
+Cada motor escreve na sua própria pasta:
 
-  output/<musica>/demucs/       bass.wav, no_bass.wav  (+ drums/vocals/other no modo full)
-  output/<musica>/bs_roformer/  bass.wav, no_bass.wav  (+ drums/vocals/guitar/piano/other no modo full)
+  output/<musica>/bs_roformer/  bass.wav, no_bass.wav  (+ drums/vocals/guitar/piano/other no full)
+  output/<musica>/demucs/       bass.wav, no_bass.wav  (+ drums/vocals/other no full)
 
 Uso:
-  uv run stem_extractor.py "examples/minha musica.mp3"            # modo bass (teste)
+  uv run stem_extractor.py "examples/minha musica.mp3"                # BS-RoFormer-SW (padrão)
   uv run stem_extractor.py "examples/minha musica.mp3" --mode full
-  uv run stem_extractor.py "examples/minha musica.mp3" --duration 30   # só os 30s iniciais
-  uv run stem_extractor.py --list-models                          # lista modelos roformer
+  uv run stem_extractor.py "examples/minha musica.mp3" --engine both  # + Demucs p/ comparar
+  uv run stem_extractor.py "examples/minha musica.mp3" --duration 30  # só os 30s iniciais
+  uv run stem_extractor.py --list-models
 """
 
 from __future__ import annotations
@@ -38,13 +39,15 @@ import soundfile as sf
 # ---------------------------------------------------------------------------
 # Configuração
 # ---------------------------------------------------------------------------
-DEMUCS_MODEL = "htdemucs_ft"
-
-# Segundo modelo: BS-RoFormer-SW (RoFormer 6-stem SOTA) via audio-separator.
+# Motor padrão: BS-RoFormer-SW (RoFormer 6-stem SOTA) via audio-separator.
 # Produz 6 stems incl. "bass"; o "no bass" é a soma dos demais.
 # Veja alternativas com --list-models.
-SECOND_MODEL = "BS-Roformer-SW.ckpt"
-SECOND_DIR = "bs_roformer"
+ROFORMER_MODEL = "BS-Roformer-SW.ckpt"
+ROFORMER_DIR = "bs_roformer"
+
+# Motor opcional (--engine demucs|both).
+DEMUCS_MODEL = "htdemucs_ft"
+DEMUCS_DIR = "demucs"
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 OUTPUT_ROOT = PROJECT_ROOT / "output"
@@ -129,7 +132,7 @@ def run_demucs(input_path: Path, out_dir: Path, device: str, mode: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Segundo modelo: MDX-Net kuielab bass (via audio-separator)
+# Motor BS-RoFormer-SW (via audio-separator)
 # ---------------------------------------------------------------------------
 def _label(path: Path) -> str:
     """Extrai o rótulo do stem do nome de arquivo do audio-separator,
@@ -142,12 +145,12 @@ def _label(path: Path) -> str:
     return (groups[-1] if groups else path.stem).strip().lower()
 
 
-def run_second_model(input_path: Path, out_dir: Path, mode: str) -> None:
+def run_roformer(input_path: Path, out_dir: Path, mode: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         tmp_out = Path(tmp)
         run(["audio-separator", str(input_path),
-             "--model_filename", SECOND_MODEL,
+             "--model_filename", ROFORMER_MODEL,
              "--output_dir", str(tmp_out),
              "--output_format", "WAV"])
         labeled = [(_label(p), p) for p in sorted(tmp_out.glob("*.wav"))]
@@ -173,7 +176,7 @@ def run_second_model(input_path: Path, out_dir: Path, mode: str) -> None:
                 if lbl == "bass" or "no bass" in lbl or lbl == "instrumental":
                     continue
                 shutil.copy(p, out_dir / f"{lbl.replace(' ', '_')}.wav")
-    print(f"  ✓ {SECOND_MODEL} → {out_dir}")
+    print(f"  ✓ {ROFORMER_MODEL} → {out_dir}")
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +184,7 @@ def run_second_model(input_path: Path, out_dir: Path, mode: str) -> None:
 # ---------------------------------------------------------------------------
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Separa stems com Demucs e BS-RoFormer-SW (saídas lado a lado).")
+        description="Separa stems com BS-RoFormer-SW (padrão) e, opcionalmente, Demucs.")
     ap.add_argument("input", nargs="?", type=Path,
                     help="arquivo de áudio (wav/mp3/flac/...)")
     ap.add_argument("--mode", choices=["bass", "full"], default="bass",
@@ -190,8 +193,8 @@ def main() -> None:
                     help="device do Demucs: mps (padrão) | cpu | cuda")
     ap.add_argument("--duration", type=float, default=None,
                     help="processa só os primeiros N segundos (teste rápido)")
-    ap.add_argument("--only", choices=["demucs", "roformer"], default=None,
-                    help="rodar apenas um dos modelos")
+    ap.add_argument("--engine", choices=["roformer", "demucs", "both"], default="roformer",
+                    help="motor: roformer = BS-RoFormer-SW (padrão) | demucs | both")
     ap.add_argument("--out", type=Path, default=None,
                     help=f"pasta de saída base (padrão: {OUTPUT_ROOT})")
     ap.add_argument("--list-models", action="store_true",
@@ -209,17 +212,17 @@ def main() -> None:
     require_ffmpeg()
 
     out_base = (args.out or OUTPUT_ROOT) / args.input.stem
-    print(f"== {args.input.name}  |  modo: {args.mode}  |  saída: {out_base}")
+    print(f"== {args.input.name}  |  motor: {args.engine}  |  modo: {args.mode}  |  saída: {out_base}")
 
     with tempfile.TemporaryDirectory() as tmp:
         audio = prepare_input(args.input, args.duration, Path(tmp))
 
-        if args.only in (None, "demucs"):
-            print("\n[demucs]")
-            run_demucs(audio, out_base / "demucs", args.device, args.mode)
-        if args.only in (None, "roformer"):
-            print(f"\n[{SECOND_DIR}]")
-            run_second_model(audio, out_base / SECOND_DIR, args.mode)
+        if args.engine in ("roformer", "both"):
+            print(f"\n[{ROFORMER_DIR}]")
+            run_roformer(audio, out_base / ROFORMER_DIR, args.mode)
+        if args.engine in ("demucs", "both"):
+            print(f"\n[{DEMUCS_DIR}]")
+            run_demucs(audio, out_base / DEMUCS_DIR, args.device, args.mode)
 
     print(f"\n✓ pronto → {out_base}")
 

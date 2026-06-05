@@ -1,12 +1,12 @@
 # stem-extractor
 
-Separa **stems** de uma música usando **dois modelos independentes** e salva as
-saídas lado a lado para comparação:
+Separa **stems** de uma música. Motor padrão: **BS-RoFormer-SW**. O Demucs fica
+opcional (`--engine demucs|both`) para comparação em outras faixas.
 
-| Modelo | Como roda | Stems |
+| Motor | Como roda | Stems |
 |---|---|---|
-| **Demucs** (`htdemucs_ft`) | PyTorch, acelerado por **MPS** no Apple Silicon | 4 stems (bass SDR ~12.0) |
-| **BS-RoFormer-SW** | via [`audio-separator`](https://github.com/nomadkaraoke/python-audio-separator) | 6 stems SOTA: bass/drums/vocals/guitar/piano/other |
+| **BS-RoFormer-SW** (padrão) | via [`audio-separator`](https://github.com/nomadkaraoke/python-audio-separator) | 6 stems SOTA: bass/drums/vocals/guitar/piano/other |
+| **Demucs** (`htdemucs_ft`) | opcional; PyTorch, acelerado por **MPS** no Apple Silicon | 4 stems (bass SDR ~12.0) |
 
 Sempre gera também `no_bass.wav` — a música **sem o contrabaixo**.
 
@@ -30,19 +30,20 @@ uv sync          # cria o venv (Python 3.12) e instala as dependências
 ## Uso
 
 ```bash
-# 1) Fase de teste — extrai SÓ o baixo dos dois modelos (rápido)
+# Padrão: BS-RoFormer-SW, modo bass (só o baixo) — rápido
 uv run stem_extractor.py "examples/minha musica.mp3"
 
 # Teste ainda mais rápido: só os primeiros 30s
 uv run stem_extractor.py "examples/minha musica.mp3" --duration 30
 
-# 2) Separação completa dos dois modelos
+# Separação completa (6 stems)
 uv run stem_extractor.py "examples/minha musica.mp3" --mode full
 
-# Rodar só um modelo / trocar device
-uv run stem_extractor.py "examples/minha musica.mp3" --only demucs --device cpu
+# Também rodar o Demucs para comparar (ou só o Demucs)
+uv run stem_extractor.py "examples/minha musica.mp3" --engine both
+uv run stem_extractor.py "examples/minha musica.mp3" --engine demucs --device cpu
 
-# Listar checkpoints RoFormer disponíveis
+# Listar modelos disponíveis
 uv run stem_extractor.py --list-models
 ```
 
@@ -53,13 +54,13 @@ uv run stem_extractor.py --list-models
 
 ```
 output/<musica>/
-  demucs/       bass.wav, no_bass.wav   (+ drums/vocals/other no modo full)
   bs_roformer/  bass.wav, no_bass.wav   (+ drums/vocals/guitar/piano/other no modo full)
+  demucs/       bass.wav, no_bass.wav   (só com --engine demucs|both)
 ```
 
 ## Notas
 
-- O segundo modelo fica na constante `SECOND_MODEL` em `stem_extractor.py`.
-  Use `--list-models` para ver alternativas e troque ali.
+- O modelo do motor RoFormer fica na constante `ROFORMER_MODEL` em
+  `stem_extractor.py`. Use `--list-models` para ver alternativas e troque ali.
 - Áudio (`*.mp3`, `*.wav`, ...) e a pasta `output/` são **gitignored** —
   exemplos comerciais e stems gerados ficam só no disco local.
