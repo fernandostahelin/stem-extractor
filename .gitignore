@@ -1,0 +1,19 @@
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Saídas de separação (geradas localmente)
+output/
+
+# Áudio: exemplos protegidos por direitos autorais e stems gerados ficam só no disco
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.aiff
+*.ogg
+
+# macOS
+.DS_Store

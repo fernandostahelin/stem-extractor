@@ -1,0 +1,17 @@
+[project]
+name = "stem-extractor"
+version = "0.1.0"
+description = "Separa stems de músicas com dois modelos (Demucs e BS-RoFormer) para comparação lado a lado."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "demucs>=4.0.1",
+    "audio-separator[cpu]>=0.18",
+    "numpy>=1.26",
+    "soundfile>=0.12",
+    # torchaudio >=2.9 delega save() ao torchcodec (usado pelo Demucs p/ gravar stems).
+    "torchcodec",
+]
+
+[tool.uv]
+# PyTorch ainda não publica wheels para Python 3.14 (o Python do sistema),
+# por isso este projeto fixa 3.12 via .python-version.
